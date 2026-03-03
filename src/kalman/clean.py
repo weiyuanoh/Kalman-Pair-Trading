@@ -59,6 +59,9 @@ def data_analysis(df, name = "X"):
 
     return out
 
+def data_loading_with_des(df, name): 
+    
+
 def data_cleaning_single_asset(df, cfg: DataCleaningConfig):
     """
     Data cleaning function that cleans data of a single asset according to configuration rules. 

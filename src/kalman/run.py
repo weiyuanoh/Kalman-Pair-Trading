@@ -19,7 +19,7 @@ def run_one(pair, cfg):
     bars_b = make_bars(df_b, cfg, side="B")
 
     # 3) Align + apply config-dependent cleaning rules (THIS is where variants differ)
-    df = prepare_pair(bars_a, bars_b, cfg)
+    df = build_pair_series(bars_a, bars_b, cfg)
 
     # 4) Build features needed by Kalman + strategy
     df = build_features(df, cfg)
