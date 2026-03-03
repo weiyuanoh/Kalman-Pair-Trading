@@ -12,7 +12,7 @@ Library for all possible ways to clean data.
 
 import pandas as pd 
 import numpy as np 
-import kalman.resample as res
+import src.kalman.xmin as res
 from experiments.variants import CONFIGS
 from experiments.variants import DataCleaningConfig
 import kalman.bars as bars 
@@ -20,11 +20,13 @@ import kalman.bars as bars
 
 cfg = CONFIGS["B_ffill_after_merge_then_drop"]
 
-def get_data(): 
-    A = pd.read_csv(r"data\A.csv")
-    B = pd.read_csv(r"data\B.csv")
-    C = pd.read_csv(r"data\C.csv")
-    return A, B,C 
+def get_data(indep_var, dep_var): 
+    indep_filename = f'r"data\{indep_var}.csv"'
+    dep_filename = f'r"data\{dep_var}.csv"'
+
+    X = pd.read_csv(indep_filename)
+    Y = pd.read_csv(dep_filename)
+    return X, Y 
 
 def data_analysis(df, name = "X"):
     # understanding data 
@@ -59,7 +61,6 @@ def data_analysis(df, name = "X"):
 
     return out
 
-def data_loading_with_des(df, name): 
     
 
 def data_cleaning_single_asset(df, cfg: DataCleaningConfig):
@@ -76,6 +77,7 @@ def data_cleaning_single_asset(df, cfg: DataCleaningConfig):
     d["exg_time"] = pd.to_datetime(d["exg_time"], utc=True, errors="coerce")
 
     d = d.dropna(subset=["exg_time", "trade_price", "trade_qty"])
+    print("Trade Level Dropped Length:", len(df) - len(d))
     
     # always drop non-positive trades (this is "hard cleaning")
     d = d[(d["trade_price"] > 0) & (d["trade_qty"] > 0)]

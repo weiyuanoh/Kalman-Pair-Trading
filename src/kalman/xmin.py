@@ -3,13 +3,8 @@ Explores different methods to resample data. Tick data -> x_bars.
 
 Criterion for choosing "x"
 1. Choose x simply based on percentage overlap of X in Y. 
-
-
-After choosing x, resample by 
-1. Simple time bars (no Volume information incorporated) 
-2. VWAP Bars: suitable for intraday trading 
-3. Volatility Bars: suitable for longer horizons 
 """
+
 import pandas as pd 
 import numpy as np
 import kalman.bars as bars 

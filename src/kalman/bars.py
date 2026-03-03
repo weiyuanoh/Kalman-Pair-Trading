@@ -1,9 +1,15 @@
+"""
+Library for all possible ways to resample trade level data -> bars
+After choosing x, resample by 
+1. Simple time bars (no Volume information incorporated) 
+2. VWAP Bars: suitable for intraday trading 
+3. Volatility Bars: suitable for longer horizons 
+"""
 import pandas as pd 
 import numpy as np 
-import kalman.resample as res
+import src.kalman.xmin as res
 from experiments.variants import CONFIGS
 from experiments.variants import DataCleaningConfig
-
 
 cfg = CONFIGS["B_ffill_after_merge_then_drop"]
 
