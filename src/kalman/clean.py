@@ -12,21 +12,26 @@ Library for all possible ways to clean data.
 
 import pandas as pd 
 import numpy as np 
-import src.kalman.xmin as res
-from experiments.variants import CONFIGS
-from experiments.variants import DataCleaningConfig
+import kalman.xmin as res
 import kalman.bars as bars 
+from pathlib import Path
+import pandas as pd
 
+REPO_ROOT = Path(__file__).resolve().parents[2]
+DATA_DIR = REPO_ROOT / "data"
 
-cfg = CONFIGS["B_ffill_after_merge_then_drop"]
+def get_data(indep_var: str, dep_var: str):
+    x_path = DATA_DIR / f"{indep_var}.csv"
+    y_path = DATA_DIR / f"{dep_var}.csv"
 
-def get_data(indep_var, dep_var): 
-    indep_filename = f'r"data\{indep_var}.csv"'
-    dep_filename = f'r"data\{dep_var}.csv"'
+    if not x_path.exists():
+        raise FileNotFoundError(f"Missing file: {x_path}")
+    if not y_path.exists():
+        raise FileNotFoundError(f"Missing file: {y_path}")
 
-    X = pd.read_csv(indep_filename)
-    Y = pd.read_csv(dep_filename)
-    return X, Y 
+    X = pd.read_csv(x_path)
+    Y = pd.read_csv(y_path)
+    return X, Y
 
 def data_analysis(df, name = "X"):
     # understanding data 
@@ -63,7 +68,7 @@ def data_analysis(df, name = "X"):
 
     
 
-def data_cleaning_single_asset(df, cfg: DataCleaningConfig):
+def data_cleaning_single_asset(df, cfg):
     """
     Data cleaning function that cleans data of a single asset according to configuration rules. 
     Trade level cleaning. 

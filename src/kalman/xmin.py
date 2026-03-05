@@ -9,9 +9,6 @@ import pandas as pd
 import numpy as np
 import kalman.bars as bars 
 
-import pandas as pd
-import kalman.bars as bars
-
 def choose_x(
     df1_clean,
     df2_clean,
@@ -46,10 +43,10 @@ def choose_x(
         if bar_method == "vwap":
             b1 = bars.make_vwap_bars(df1_clean, freq=freq)["vwap"]
             b2 = bars.make_vwap_bars(df2_clean, freq=freq)["vwap"]
-        elif bar_method == "vol":
+        #elif bar_method == "vol":
             # Only if you implemented it in bars.py
-            b1 = bars.make_vol_bars(df1_clean, freq=freq)["price"]
-            b2 = bars.make_vol_bars(df2_clean, freq=freq)["price"]
+            #b1 = bars.make_vol_bars(df1_clean, freq=freq)["price"]
+            #b2 = bars.make_vol_bars(df2_clean, freq=freq)["price"]
         else:
             raise ValueError(f"Unknown bar_method: {bar_method}")
 

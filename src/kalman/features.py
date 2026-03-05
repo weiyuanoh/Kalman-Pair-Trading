@@ -5,7 +5,7 @@ import pandas as pd
 import numpy as np 
 import math 
 import matplotlib.pyplot as plt 
-import statsmodels.api as sm 
+
 
 def init_beta0_ols_no_intercept(x, y, n0_beta_0):
     """
@@ -31,6 +31,7 @@ def init_beta0_ols_no_intercept(x, y, n0_beta_0):
 
 
 def init_beta0_ols_with_intercept(x, y, n0_beta_0):
+    import statsmodels.api as sm 
     if n0_beta_0 > 1 :
         raise Exception("Error: n0_beta_0 is a percentage length of data")
     n0_abs = math.floor(n0_beta_0 * len(x))
@@ -99,12 +100,13 @@ def sanity_check(x, y, beta_hat, P_hat, spread, diag, Q, plot = True):
         
     return z   
 
-def build_features(x, y, window_pct_R, n0_beta_0): 
+def build_features(x, y, prm): 
     """
-    Wrapper to build the features needed to compute Q, R
+    Wrapper to build the features needed to compute Q, R.
+    Takes in full data, cutting is done in inidividual functions. 
     """
-
-    beta_0 = rolling_beta_no_intercept(x, y, window_pct_R)
-    Q, R = QR(x, y, beta_0, n0_beta_0, window_pct_R)
+    
+    beta_0 = init_beta0_ols_no_intercept(x, y, prm.window_pct_R)
+    Q, R = QR(x, y, beta_0, prm.n0_beta_0, prm.window_pct_R)
 
     return beta_0, Q, R 

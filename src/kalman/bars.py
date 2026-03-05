@@ -7,11 +7,7 @@ After choosing x, resample by
 """
 import pandas as pd 
 import numpy as np 
-import src.kalman.xmin as res
-from experiments.variants import CONFIGS
-from experiments.variants import DataCleaningConfig
-
-cfg = CONFIGS["B_ffill_after_merge_then_drop"]
+import kalman.xmin as res
 
 
 def _fill_series(s, method, limit):
