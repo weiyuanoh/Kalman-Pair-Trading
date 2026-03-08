@@ -1,5 +1,8 @@
-from experiments.configs import CONFIGS
-from experiments.params import PARAMS
+from __future__ import annotations
+
+import math
+from dataclasses import asdict, is_dataclass
+from typing import Any, Dict
 
 import math
 from kalman.clean import get_data, data_cleaning_single_asset, build_pair_series
@@ -10,7 +13,11 @@ from kalman.kalman_filter import kalman_beta_filter
 
 
 
-def run_one(cfg, prm, indep_var = "A", dep_var = "B"):
+def run_one(cfg, prm, indep_var = "A", dep_var = "B",*,
+    coms_bps: float = 0.0,
+    return_trades: bool = False,
+    verbose: bool = False,
+) -> Dict[str, Any]:
     """
     Run 1 pair under 1 config end-to-end.
     Return metrics dict.
@@ -65,23 +72,54 @@ def run_one(cfg, prm, indep_var = "A", dep_var = "B"):
     # 7. make signals
     XY_trade = make_signal(prm, XY_trade)
 
-    # 7) Backtest to get pnl + metrics
+    # 9) Backtest (future-compatible with trades)
+    trades = None
+
     equity = backtest(
         XY_trade=XY_trade,
-        coms_bps=0,
-        prm = prm, 
+        coms_bps=coms_bps,
+        prm=prm,
         indep_var=indep_var,
-        dep_var=dep_var
-    )
+        dep_var=dep_var)
+        #return_trades=return_trades
 
-    return equity
+    meta: Dict[str, Any] = {
+        "indep_var": indep_var,
+        "dep_var": dep_var,
+        "x_min": x_min,
+        "n_bars_total": int(len(XY)),
+        "n_bars_trade": int(len(XY_trade)),
+        "n0_pct": prm.n0_beta_0,
+        "n0_abs": int(n0_abs),
+        "beta0": float(beta_0) if beta_0 is not None else None,
+        "Q": float(Q_est) if Q_est is not None else None,
+        "R": float(R_est) if R_est is not None else None,
+        "x_diag": x_diag,
+    }
 
+    if verbose:
+        print("[run_one] meta:", meta)
+
+    return {
+        "equity": equity,
+        "trades": trades,
+        "meta": meta,
+        "xy_trade": XY_trade if verbose else None,
+    }
 
 
 
 if __name__ == "__main__": 
-    print("RUN.PY MAIN START")
-    cfg = CONFIGS["S1_post_ffill_unlimited"]
-    prm = PARAMS["P0_baseline"]
-    print(run_one(cfg, prm, indep_var="A", dep_var="B"))
+    # Local smoke test
+    from experiments.configs import CONFIGS
+    from experiments.params import PARAMS
+
+    cfg_name = "S1_post_ffill_unlimited"
+    prm_name = "P0_baseline"
+    cfg = CONFIGS[cfg_name]
+    prm = PARAMS[prm_name]
+
+    res = run_one(cfg, prm, indep_var="A", dep_var="B", verbose=True, return_trades=False)
+    print(res["equity"].tail())
+
    
