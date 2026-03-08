@@ -77,18 +77,37 @@ def data_cleaning_single_asset(df, cfg):
     - df: pd.DataFrame of one Asset 
     - cfg: configuration rules for data cleaning
     """
+    d0 = len(df)
 
     d = df.copy()
     d["exg_time"] = pd.to_datetime(d["exg_time"], utc=True, errors="coerce")
 
+    # Stage: drop NA core columns
     d = d.dropna(subset=["exg_time", "trade_price", "trade_qty"])
-    print("Trade Level Dropped Length:", len(df) - len(d))
-    
-    # always drop non-positive trades (this is "hard cleaning")
+    dropped_na = d0 - len(d)
+
+    # Stage: drop non-positive trades (hard cleaning)
+    d1 = len(d)
     d = d[(d["trade_price"] > 0) & (d["trade_qty"] > 0)]
+    dropped_nonpos = d1 - len(d)
 
     d = d.sort_values("exg_time").reset_index(drop=True)
-    return d
+
+    diag = {
+        "trade_level": {
+            "raw_len": int(d0),
+            "after_dropna_len": int(d0 - dropped_na),
+            "dropped_na": int(dropped_na),
+            "after_nonpos_len": int(len(d)),
+            "dropped_nonpos": int(dropped_nonpos),
+            "dropped_total": int(d0 - len(d)),
+        }
+    }
+
+    # keep your print if you want (optional)
+    print("Trade Level Dropped Length:", diag["trade_level"]["dropped_na"])
+
+    return (d, diag) if return_diag else d
 
 
 
