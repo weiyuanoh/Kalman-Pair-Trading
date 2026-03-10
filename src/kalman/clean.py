@@ -68,7 +68,7 @@ def data_analysis(df, name = "X"):
 
     
 
-def data_cleaning_single_asset(df, cfg):
+def data_cleaning_single_asset(df, return_diag = True):
     """
     Data cleaning function that cleans data of a single asset according to configuration rules. 
     Trade level cleaning. 

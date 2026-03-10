@@ -41,6 +41,10 @@ src/
     plots.py         # plotting helpers
     stat_tests.py    # ADF/Johansen/ACF diagnostics (if used)
     __init__.py
+
+results/ 
+  Different Pickle files for different configuration
+  use ./notebooks/eda.ipynb to load and read the pickle file for a single config and params
 ```
 
 ---
@@ -170,15 +174,12 @@ This design avoids “same-bar” leakage.
 
 ## Plans / WIP
 
-### Results export (near-term)
-Add structured logging under `results/` for a single `(cfg, prm)` run:
-- a CSV containing equity curves for all pair permutations
-- a JSON/TXT bundle of per-pair stats (e.g., \(\beta_0, Q, R\), stationarity tests if enabled)
-- export the chosen `cfg` and `prm` definitions with the run for reproducibility
-
 ### Per-trade logs (future)
 For each `(cfg, prm, pair)`:
 - export a `trades.csv` containing entry/exit timestamps, side, z-score at entry/exit, quantities/notional, and PnL per trade.
 
 ### Scaling beyond testing mode (future)
 Move from “hardcode 1 cfg + 1 prm” to looping across all `CONFIGS × PARAMS`, with comparable result artifacts per run.
+
+### Specific data quality monitoring 
+Monitor how much data is lost in resample, cleaning, and combining series. 

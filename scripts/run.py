@@ -4,14 +4,12 @@ import math
 from dataclasses import asdict, is_dataclass
 from typing import Any, Dict
 
-import math
+import pandas as pd # <-- Added missing import
 from kalman.clean import get_data, data_cleaning_single_asset, build_pair_series
 from kalman.xmin import choose_x
 from kalman.features import build_features
 from kalman.strategy import make_signal, backtest
 from kalman.kalman_filter import kalman_beta_filter
-
-
 
 def run_one(cfg, prm, indep_var = "A", dep_var = "B",*,
     coms_bps: float = 0.0,
@@ -26,13 +24,14 @@ def run_one(cfg, prm, indep_var = "A", dep_var = "B",*,
     X_raw, Y_raw= get_data(indep_var, dep_var)
     
     # 2. clean trade level data 
-    X_clean = data_cleaning_single_asset(X_raw, cfg)
-    Y_clean = data_cleaning_single_asset(Y_raw, cfg)
+    (X_clean, X_clean_diag) = data_cleaning_single_asset(X_raw, return_diag= True)
+    (Y_clean, Y_clean_diag) = data_cleaning_single_asset(Y_raw, return_diag= True)
 
     # 3. choose x min to resample to 
     x_min, x_diag = choose_x(X_clean, Y_clean, (5,15,45,90), 0.8, cfg.resample_method)
 
     # 4. build pair series 
+    # (Future: update this unpack when build_pair_series returns diags)
     X_aligned, Y_aligned, XY = build_pair_series(X_clean, 
                                                        Y_clean, 
                                                          x_min, 
@@ -42,9 +41,11 @@ def run_one(cfg, prm, indep_var = "A", dep_var = "B",*,
 
     # 5. build kalman feature Q and R 
     beta_0, Q_est , R_est = build_features(X_aligned, Y_aligned, prm)
-    print("beta 0:", beta_0)
-    print("Q:", Q_est)
-    print("R:", R_est)
+    
+    if verbose:
+        print("beta 0:", beta_0)
+        print("Q:", Q_est)
+        print("R:", R_est)
 
     # 6. split data to be traded on
     n0_abs  = math.ceil(prm.n0_beta_0 * len(XY))
@@ -52,7 +53,7 @@ def run_one(cfg, prm, indep_var = "A", dep_var = "B",*,
     X_trade  = X_aligned.iloc[n0_abs:]
     Y_trade  = Y_aligned.iloc[n0_abs:]
 
-    # 6. run kalman - using split data that is not seen after computing Q and R 
+    # 7. run kalman - using split data that is not seen after computing Q and R 
     beta_hat, P, post_spread, diag = kalman_beta_filter(
         x=X_trade,
         y=Y_trade,
@@ -67,12 +68,13 @@ def run_one(cfg, prm, indep_var = "A", dep_var = "B",*,
 
     # check 
     diff = len(XY) - len(XY_trade) 
-    print("IS/OS data check:", diff/len(XY) - prm.n0_beta_0) 
+    if verbose:
+        print("IS/OS data check:", diff/len(XY) - prm.n0_beta_0) 
 
-    # 7. make signals
+    # 8. make signals
     XY_trade = make_signal(prm, XY_trade)
 
-    # 9) Backtest (future-compatible with trades)
+    # 9. Backtest (future-compatible with trades)
     trades = None
 
     equity = backtest(
@@ -83,6 +85,7 @@ def run_one(cfg, prm, indep_var = "A", dep_var = "B",*,
         dep_var=dep_var)
         #return_trades=return_trades
 
+    # --- UPDATED META: Grouping diagnostics ---
     meta: Dict[str, Any] = {
         "indep_var": indep_var,
         "dep_var": dep_var,
@@ -94,7 +97,12 @@ def run_one(cfg, prm, indep_var = "A", dep_var = "B",*,
         "beta0": float(beta_0) if beta_0 is not None else None,
         "Q": float(Q_est) if Q_est is not None else None,
         "R": float(R_est) if R_est is not None else None,
-        "x_diag": x_diag,
+        "diagnostics": {
+            "x_clean_diag": X_clean_diag,
+            "y_clean_diag": Y_clean_diag,
+            "x_resample_diag": x_diag,
+            "pair_build_diag": {} # Ready for when you update build_pair_series
+        }
     }
 
     if verbose:
@@ -107,10 +115,7 @@ def run_one(cfg, prm, indep_var = "A", dep_var = "B",*,
         "xy_trade": XY_trade if verbose else None,
     }
 
-
-
 if __name__ == "__main__": 
-    # Local smoke test
     from experiments.configs import CONFIGS
     from experiments.params import PARAMS
 
@@ -121,5 +126,3 @@ if __name__ == "__main__":
 
     res = run_one(cfg, prm, indep_var="A", dep_var="B", verbose=True, return_trades=False)
     print(res["equity"].tail())
-
-   
