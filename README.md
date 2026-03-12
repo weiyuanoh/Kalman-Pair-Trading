@@ -174,6 +174,9 @@ This design avoids “same-bar” leakage.
 
 ## Plans / WIP
 
+### Multi Assset Hedge
+Instead of pairwise hedging, I plan to extend it to multi asset hedges, meaning that the cointegration equation will be extended. 
+
 ### Per-trade logs (future)
 For each `(cfg, prm, pair)`:
 - export a `trades.csv` containing entry/exit timestamps, side, z-score at entry/exit, quantities/notional, and PnL per trade.

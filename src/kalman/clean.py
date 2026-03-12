@@ -16,6 +16,7 @@ import kalman.xmin as res
 import kalman.bars as bars 
 from pathlib import Path
 import pandas as pd
+import yfinance as yf
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DATA_DIR = REPO_ROOT / "data"
@@ -32,6 +33,7 @@ def get_data(indep_var: str, dep_var: str):
     X = pd.read_csv(x_path)
     Y = pd.read_csv(y_path)
     return X, Y
+
 
 def data_analysis(df, name = "X"):
     # understanding data 
