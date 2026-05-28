@@ -1,0 +1,121 @@
+from pykalman import KalmanFilter
+import statsmodels as sm
+from statsmodels.tsa.stattools import adfuller
+
+import pandas as pd
+import numpy as np
+from numpy import array
+import yfinance as yf
+import datetime
+from datetime import date, timedelta
+import matplotlib.pyplot as plt
+today = date.today()
+
+# To remove the scientific notation from numpy arrays
+np.set_printoptions(suppress=True)
+ 
+from datetime import datetime
+ 
+startDate=datetime(2016, 4,21)
+endDate=datetime(2022, 4, 26)
+ 
+# Fetching the data
+StockDataEWA = yf.download('EWA', 
+                      start=startDate, 
+                      end=endDate, 
+                      progress=False)
+print(StockDataEWA.shape)
+
+# Fetching the data
+StockDataEWC = yf.download('EWC', 
+                      start=startDate, 
+                      end=endDate, 
+                      progress=False)
+print(StockDataEWA.shape)
+print(StockDataEWC.shape)
+
+# Creating a column as date
+StockDataEWA['TradeDate']=StockDataEWA.index
+StockDataEWC['TradeDate']=StockDataEWC.index
+ 
+# Plotting the stock prices
+# %matplotlib inline
+StockDataEWA.plot(x='TradeDate', y='Close', kind='line', figsize=(20,6), rot=20)
+StockDataEWC.plot(x='TradeDate', y='Close', kind='line', figsize=(20,6), rot=20)
+# Extracting the closing prices of each day
+EWAs = StockDataEWA[['Close']].values
+EWCs = StockDataEWC[['Close']].values
+print(EWAs[0:5])
+
+# print(EWC.shape)
+H = np.insert(EWAs, EWAs.shape[1], 1, axis=1)
+print(len(EWAs))
+# print(ii)
+H = H.reshape(len(EWAs),1,2)
+print(H.shape)
+print(H)
+# for line in open('C:/Users/jo0x/Documents/dataset.csv'):
+F = np.eye(2) # identity matrix because x_(k+1) = x_(k) + noise
+print(F.shape)
+# observation_matrix  
+# H_k = [EWA_k   1]
+# H = np.vstack([np.matrix(EWA), np.ones((1, n))]).T[:, np.newaxis]
+
+# transition_covariance 
+Q = [[1e-4,     0], 
+     [   0,  1e-4]] 
+# observation_covariance 
+R = 1 # max error = 3
+# initial_state_mean
+X0 = [0,
+      0]
+# initial_state_covariance
+P0 = [[  1,    0], 
+      [  0,    1]]
+# Kalman-Filter initialization
+kf = KalmanFilter(n_dim_obs=1, n_dim_state=2,
+                  transition_matrices = F, 
+                  observation_matrices = H, 
+                  transition_covariance = Q, 
+                  observation_covariance = R, 
+                  initial_state_mean = X0, 
+                  initial_state_covariance = P0)
+
+
+# Filtering
+state_means, state_covs = kf.filter(EWCs)
+
+# Restore EWC based on EWA and estimated parameters
+# EWC_restored = np.multiply(EWAs, state_means[:, 0]) + state_means[:, 1]    
+beta = state_means[:, 0]
+intc = state_means[:, 1]
+beta = beta.reshape(len(beta),1)
+intc = intc.reshape(len(intc),1)
+print(beta.shape)
+print(intc.shape)
+
+# EWC_restored = EWAs * state_means[:, 0] + state_means[:, 1]    
+resid = EWCs - (EWAs * beta + intc) 
+EWC_restored = (EWAs * beta + intc)    
+# Plots
+plt.figure(1)
+ax1 = plt.subplot(211)
+plt.plot(state_means[:, 0], label="Slope")
+plt.grid()
+plt.legend(loc="upper left")
+
+ax2 = plt.subplot(212)
+plt.plot(state_means[:, 1], label="Intercept")
+plt.grid()
+plt.legend(loc="upper left")
+
+# check the result
+plt.figure(2)
+# plt.plot(EWCs, label="EWC original")
+plt.plot(EWC_restored, label="EWC restored")
+plt.grid()
+plt.legend(loc="upper left")
+
+plt.show()
+print(state_means[:,0])
+print(state_means[:,1])

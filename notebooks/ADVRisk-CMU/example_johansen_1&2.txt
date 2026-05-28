@@ -1,0 +1,218 @@
+# ============================================================
+# Colab-ready: Johansen Cointegration + VECM Fit
+# Tickers: MSFT, AAPL, SPY | Daily | 2014-01-01 to 2026-01-16
+# ============================================================
+
+!pip -q install yfinance statsmodels
+
+import pandas as pd
+import yfinance as yf
+from IPython.display import display
+
+from statsmodels.tsa.vector_ar.vecm import (
+    coint_johansen,
+    VECM
+)
+
+# -----------------------------
+# SETTINGS
+# -----------------------------
+SYMBOLS = ["MSFT", "AAPL", "SPY"]
+START = "2014-01-01"
+END   = "2026-01-16"
+
+K_AR_DIFF = 2
+COINT_RANK = 1
+DETERMINISTIC = "ci"   # "ci" = constant inside cointegration relation
+
+
+# -----------------------------
+# LOAD LEVEL PRICES
+# -----------------------------
+def load_prices(symbols, start, end):
+    raw = yf.download(
+        symbols,
+        start=start,
+        end=end,
+        interval="1d",
+        auto_adjust=True,
+        progress=False,
+        group_by="column"
+    )
+
+    if raw.empty:
+        raise ValueError("No data downloaded. Check tickers, dates, or internet connection.")
+
+    if isinstance(raw.columns, pd.MultiIndex):
+        if "Close" in raw.columns.get_level_values(0):
+            prices = raw["Close"].copy()
+        elif "Adj Close" in raw.columns.get_level_values(0):
+            prices = raw["Adj Close"].copy()
+        else:
+            raise ValueError(f"No Close/Adj Close found. Columns:\n{raw.columns}")
+    else:
+        if "Close" in raw.columns:
+            prices = raw[["Close"]].copy()
+        elif "Adj Close" in raw.columns:
+            prices = raw[["Adj Close"]].copy()
+        else:
+            raise ValueError(f"No Close/Adj Close found. Columns:\n{raw.columns}")
+
+        prices.columns = symbols
+
+    prices = prices[symbols]
+    prices.index = pd.to_datetime(prices.index)
+    prices = prices.dropna()
+    prices = prices.astype(float)
+
+    print(f"Loaded {len(prices)} common daily observations.")
+    print(f"Date range: {prices.index.min().date()} to {prices.index.max().date()}")
+
+    return prices
+
+
+# -----------------------------
+# JOHANSEN OUTPUT TABLES
+# -----------------------------
+def johansen_tables(res, n_vars):
+    r_labels = [f"r ≤ {i}" for i in range(n_vars)]
+
+    trace_df = pd.DataFrame({
+        "rank_h0": r_labels,
+        "trace_stat": res.lr1,
+        "cv_90": res.cvt[:, 0],
+        "cv_95": res.cvt[:, 1],
+        "cv_99": res.cvt[:, 2],
+    })
+
+    maxeig_df = pd.DataFrame({
+        "rank_h0": r_labels,
+        "maxeig_stat": res.lr2,
+        "cv_90": res.cvm[:, 0],
+        "cv_95": res.cvm[:, 1],
+        "cv_99": res.cvm[:, 2],
+    })
+
+    return trace_df, maxeig_df
+
+
+# -----------------------------
+# RUN ONE JOHANSEN SPEC
+# -----------------------------
+def run_johansen(data_df, name, det_order):
+    print("\n" + "=" * 70)
+    print(name)
+    print(f"Johansen det_order={det_order} | k_ar_diff={K_AR_DIFF}")
+    print("=" * 70)
+
+    joh = coint_johansen(
+        data_df.values,
+        det_order=det_order,
+        k_ar_diff=K_AR_DIFF
+    )
+
+    trace_df, maxeig_df = johansen_tables(joh, n_vars=data_df.shape[1])
+
+    print("\nTrace test:")
+    display(trace_df)
+
+    print("\nMax-eigen test:")
+    display(maxeig_df)
+
+    eig_df = pd.DataFrame({"eigenvalue": joh.eig})
+    print("\nEigenvalues:")
+    display(eig_df)
+
+    return {
+        "trace": trace_df,
+        "maxeig": maxeig_df,
+        "eigenvalues": eig_df,
+        "johansen_object": joh
+    }
+
+
+# -----------------------------
+# FIT VECM
+# -----------------------------
+def fit_vecm(prices, coint_rank, deterministic):
+    print("\n" + "=" * 70)
+    print("VECM FIT")
+    print(f"k_ar_diff={K_AR_DIFF} | coint_rank={coint_rank} | deterministic='{deterministic}'")
+    print("=" * 70)
+
+    vecm_fit = VECM(
+        prices,
+        k_ar_diff=K_AR_DIFF,
+        coint_rank=coint_rank,
+        deterministic=deterministic
+    ).fit()
+
+    alpha_df = pd.DataFrame(
+        vecm_fit.alpha,
+        index=prices.columns,
+        columns=[f"alpha_{i+1}" for i in range(coint_rank)]
+    )
+
+    beta_df = pd.DataFrame(
+        vecm_fit.beta,
+        index=prices.columns,
+        columns=[f"beta_{i+1}" for i in range(coint_rank)]
+    )
+
+    print("\nAlpha / adjustment coefficients:")
+    display(alpha_df)
+
+    print("\nBeta / cointegration vector:")
+    display(beta_df)
+
+    print("\nVECM summary:")
+    print(vecm_fit.summary())
+
+    return vecm_fit, alpha_df, beta_df
+
+
+# -----------------------------
+# MAIN
+# -----------------------------
+prices = load_prices(SYMBOLS, START, END)
+
+print("\nData preview:")
+display(prices.head())
+
+print("\nData tail:")
+display(prices.tail())
+
+results = {}
+
+results["Model3_det0"] = run_johansen(
+    prices,
+    "Model 3: Constant in Cointegrating Relation",
+    det_order=0
+)
+
+results["Model2_det1"] = run_johansen(
+    prices,
+    "Model 2: Linear Trend in Data",
+    det_order=1
+)
+
+results["Model1_det-1"] = run_johansen(
+    prices,
+    "Model 1: No Constant / No Trend",
+    det_order=-1
+)
+
+# -----------------------------
+# VECM FIT USING SELECTED SPEC
+# -----------------------------
+vecm_fit, alpha_df, beta_df = fit_vecm(
+    prices,
+    coint_rank=COINT_RANK,
+    deterministic=DETERMINISTIC
+)
+
+print("\nDone.")
+print("Johansen results stored in: results")
+print("VECM object stored in: vecm_fit")
+print("Alpha stored in: alpha_df")
+print("Beta stored in: beta_df")

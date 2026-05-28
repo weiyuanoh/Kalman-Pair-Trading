@@ -1,0 +1,108 @@
+import numpy as np
+import pandas as pd
+import statsmodels.api as sm
+import statsmodels.formula.api as smf
+from statsmodels.tsa.stattools import adfuller
+import matplotlib.pyplot as plt
+
+# ---------------------------------------------------------
+# 1. Load data
+# ---------------------------------------------------------
+df = data.copy()
+df["TradeDate"] = pd.to_datetime(df["TradeDate"])
+
+y = df["MSFT"]
+x = df["AAPL"]
+z = df["TradeDate"]
+
+# ---------------------------------------------------------
+# 2. Long-run Engle–Granger regression
+# ---------------------------------------------------------
+result = smf.ols("MSFT ~ AAPL", data=df).fit()
+print("\n==============================")
+print("Long-Run Cointegration Regression (Engle–Granger Step 1)")
+print("==============================")
+print(result.summary())
+
+# Extract residuals
+df["resid"] = result.resid
+
+# ---------------------------------------------------------
+# 3. ADF test on residuals (Engle–Granger Step 2)
+# ---------------------------------------------------------
+print("\n==============================")
+print("ADF Test on Residuals (Cointegration Test)")
+print("==============================")
+
+adf_stat, pval, lags, nobs, crit, icbest = adfuller(df["resid"].dropna(), regression="c")
+
+print(f"ADF Statistic: {adf_stat}")
+print(f"p-value: {pval}")
+print(f"Lags used: {lags}")
+print(f"Observations: {nobs}")
+print("Critical values:")
+for k, v in crit.items():
+    print(f"   {k}: {v}")
+
+
+
+# ---------------------------------------------------------
+# 4. Build the Error-Correction Model (ECM)
+# ---------------------------------------------------------
+df["dMSFT"] = df["MSFT"].diff()
+df["dAAPL"] = df["AAPL"].diff()
+df["ECT_lag"] = df["resid"].shift(1)
+
+# Add short-run lags
+df["dMSFT_lag1"] = df["dMSFT"].shift(1)
+df["dAAPL_lag1"] = df["dAAPL"].shift(1)
+
+ecm_df = df.dropna()
+
+# ECM regression:
+ecm_model = smf.ols(
+    "dMSFT ~ ECT_lag + dMSFT_lag1 + dAAPL_lag1",
+    data=ecm_df
+).fit()
+
+print("\n==============================")
+print("Error-Correction Model (ECM) Implied by Engle–Granger")
+print("==============================")
+print(ecm_model.summary())
+
+
+
+# ---------------------------------------------------------
+# 5. Print the ECM equation with estimated coefficients
+# ---------------------------------------------------------
+alpha = ecm_model.params["ECT_lag"]
+gamma1 = ecm_model.params["dMSFT_lag1"]
+delta1 = ecm_model.params["dAAPL_lag1"]
+const = ecm_model.params["Intercept"]
+
+print("\n==============================")
+print("Estimated ECM Equation (Explicit Form)")
+print("==============================")
+
+print(f"ΔMSFT_t = {const:.6f}"
+      f" + ({alpha:.6f}) * ECT_(t-1)"
+      f" + ({gamma1:.6f}) * ΔMSFT_(t-1)"
+      f" + ({delta1:.6f}) * ΔAAPL_(t-1)"
+      f" + ε_t")
+
+print("\nWhere:")
+print("  ECT_(t-1) = residual from long-run regression lagged one period")
+print("  ΔMSFT_t = first difference of MSFT")
+print("  ΔAAPL_t = first difference of AAPL")
+
+# ---------------------------------------------------------
+# 6. Plot residuals
+# ---------------------------------------------------------
+plt.figure(figsize=(10, 4))
+plt.scatter(z, df["resid"], color='black', s=8)
+plt.title("Residuals from Cointegration Regression")
+plt.xlabel("Date")
+plt.ylabel("Residuals")
+plt.xlim(pd.to_datetime("2014-01-01"), z.max())
+plt.ylim(df["resid"].min(), df["resid"].max())
+plt.show()

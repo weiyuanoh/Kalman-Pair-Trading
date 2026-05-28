@@ -1,0 +1,127 @@
+import statsmodels.formula.api as smf
+import matplotlib.pyplot as plt
+import pandas as pd
+from statsmodels.tsa.stattools import adfuller
+
+!pip install yfinance
+
+import yfinance as yf
+import numpy as np
+
+# --------------------------------------------
+# Helper function to print clean ADF results
+# --------------------------------------------
+def print_adf_results(name, adf_output):
+    stat, pval, lags, nobs, crit, icbest = adf_output
+
+    print("\n==============================")
+    print(f"ADF Test Results for {name}")
+    print("==============================")
+    print(f"Test Statistic : {stat:.6f}")
+    print(f"p-value        : {pval:.6f}")
+    print(f"Lags Used      : {lags}")
+    print(f"Observations   : {nobs}")
+    print("Critical Values:")
+    for level, cv in crit.items():
+        print(f"   {level}: {cv:.6f}")
+
+    if pval < 0.05:
+        print("\nConclusion: The series IS stationary at the 5% level.")
+    else:
+        print("\nConclusion: The series is NOT stationary at the 5% level.")
+
+
+# --------------------------------------------
+# Download data
+# --------------------------------------------
+symbol_list = ['MSFT', 'AAPL']
+
+data = yf.download(
+    symbol_list,
+    start='2014-01-01',
+    end='2026-04-30'
+)['Close']
+
+# Add TradeDate column
+data['TradeDate'] = data.index
+
+df = pd.DataFrame(data)
+
+
+# --------------------------------------------
+# Stationarity wrapper
+# --------------------------------------------
+def stationarity(series, name):
+    series_clean = series.dropna()
+    adf_output = adfuller(series_clean, regression="c")
+    print_adf_results(name, adf_output)
+
+
+# --------------------------------------------
+# Run ADF tests
+# --------------------------------------------
+stationarity(df['MSFT'], "MSFT")
+stationarity(df['AAPL'], "AAPL")
+
+
+# ---------------------------------------------------------
+# Helper: Clean ADF Output
+# ---------------------------------------------------------
+def print_adf_results(name, series):
+    series = series.dropna()
+    stat, pval, lags, nobs, crit, icbest = adfuller(series, regression="c")
+
+    print("\n==============================")
+    print(f"ADF Test for {name}")
+    print("==============================")
+    print(f"Test Statistic : {stat:.6f}")
+    print(f"p-value        : {pval:.6f}")
+    print(f"Lags Used      : {lags}")
+    print(f"Observations   : {nobs}")
+    print("Critical Values:")
+    for level, cv in crit.items():
+        print(f"   {level}: {cv:.6f}")
+
+    if pval < 0.05:
+        print("\nConclusion: The series IS stationary at the 5% level.")
+    else:
+        print("\nConclusion: The series is NOT stationary at the 5% level.")
+
+
+# ---------------------------------------------------------
+# 1. Long-run Engle–Granger Regression
+# ---------------------------------------------------------
+y = data["MSFT"]
+x = data["AAPL"]
+z = pd.to_datetime(data["TradeDate"])
+
+result = smf.ols("MSFT ~ AAPL", data=df).fit()
+
+print("\n==============================")
+print("Long-Run Cointegration Regression")
+print("==============================")
+print(result.summary())
+
+# ---------------------------------------------------------
+# 2. Compute residuals
+# ---------------------------------------------------------
+intercept = result.params["Intercept"]
+beta = result.params["AAPL"]
+df["Resid"] = y - (intercept + beta * x)
+
+# ---------------------------------------------------------
+# 3. Plot residuals
+# ---------------------------------------------------------
+plt.figure(figsize=(10, 4))
+plt.scatter(z, df["Resid"], color="black", s=8)
+plt.title("Engle–Granger Residuals")
+plt.xlabel("Date")
+plt.ylabel("Residual")
+plt.xlim(pd.to_datetime("2014-01-01"), z.max())
+plt.ylim(df["Resid"].min(), df["Resid"].max())
+plt.show()
+
+# ---------------------------------------------------------
+# 4. ADF Test on Residuals (Cointegration Test)
+# ---------------------------------------------------------
+print_adf_results("Engle–Granger Residuals", df["Resid"])
