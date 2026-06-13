@@ -1,169 +1,143 @@
-"""
-Library for all possible ways to clean data. 
-1. Checks for 
-- nan values in "exg_time" 
-- <0 values of "trade_qty" and "trade_price"
+"""Data loading, cleaning, and pair-series construction."""
 
-2. 
-
-"""
-
-
-
-import pandas as pd 
-import numpy as np 
-import kalman.xmin as res
-import kalman.bars as bars 
 from pathlib import Path
+
 import pandas as pd
-import yfinance as yf
+
+import kalman.bars as bars
+import kalman.xmin as res
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DATA_DIR = REPO_ROOT / "data"
 
+
+def load_asset_data(asset: str) -> pd.DataFrame:
+    path = DATA_DIR / f"{asset}.csv"
+    if not path.exists():
+        raise FileNotFoundError(f"Missing file: {path}")
+    return pd.read_csv(path)
+
+
 def get_data(indep_var: str, dep_var: str):
-    x_path = DATA_DIR / f"{indep_var}.csv"
-    y_path = DATA_DIR / f"{dep_var}.csv"
-
-    if not x_path.exists():
-        raise FileNotFoundError(f"Missing file: {x_path}")
-    if not y_path.exists():
-        raise FileNotFoundError(f"Missing file: {y_path}")
-
-    X = pd.read_csv(x_path)
-    Y = pd.read_csv(y_path)
-    return X, Y
+    return load_asset_data(indep_var), load_asset_data(dep_var)
 
 
-def data_analysis(df, name = "X"):
-    # understanding data 
-    print("Data Description:", "\n")
-    print(df.describe())
-
-    require = ["exg_time","trade_price","trade_qty"]
-    missing = [c for c in require if c not in df.columns]
+def data_analysis(df: pd.DataFrame, name: str = "X") -> dict:
+    required = ["exg_time", "trade_price", "trade_qty"]
+    missing = [col for col in required if col not in df.columns]
     if missing:
         return {"name": name, "error": f"missing columns: {missing}"}
 
     d = df.copy()
-    # time stamp analysis 
     d["exg_time"] = pd.to_datetime(d["exg_time"], utc=True, errors="coerce")
     d = d.sort_values("exg_time")
 
-    out = {}
-    out["name"] = name
-    out["rows"] = len(d)
-
-    # nan values, missing values 
-    out["null_exg_time"] = int(d["exg_time"].isna().sum())
-    out["null_price"]    = int(d["trade_price"].isna().sum())
-    out["null_qty"]      = int(d["trade_qty"].isna().sum())
-    out["nonpos_price"]  = int((d["trade_price"] <= 0).sum())
-    out["nonpos_qty"]    = int((d["trade_qty"] <= 0).sum())
-
-    # time range
-    out["start"] = str(d["exg_time"].min())
-    out["end"]   = str(d["exg_time"].max())
+    return {
+        "name": name,
+        "rows": len(d),
+        "null_exg_time": int(d["exg_time"].isna().sum()),
+        "null_price": int(d["trade_price"].isna().sum()),
+        "null_qty": int(d["trade_qty"].isna().sum()),
+        "nonpos_price": int((d["trade_price"] <= 0).sum()),
+        "nonpos_qty": int((d["trade_qty"] <= 0).sum()),
+        "start": str(d["exg_time"].min()),
+        "end": str(d["exg_time"].max()),
+    }
 
 
-    return out
-
-    
-
-def data_cleaning_single_asset(df, return_diag = True):
+def data_cleaning_single_asset(df: pd.DataFrame, return_diag: bool = True, verbose: bool = False):
     """
-    Data cleaning function that cleans data of a single asset according to configuration rules. 
-    Trade level cleaning. 
-    
-    Inputs: 
-    - df: pd.DataFrame of one Asset 
-    - cfg: configuration rules for data cleaning
-    """
-    d0 = len(df)
+    Clean one asset at trade level.
 
+    Rows with missing timestamps, prices, or quantities are dropped. Non-positive
+    price and quantity observations are also removed.
+    """
+    required = ["exg_time", "trade_price", "trade_qty"]
+    missing = [col for col in required if col not in df.columns]
+    if missing:
+        raise ValueError(f"Missing required columns: {missing}")
+
+    raw_len = len(df)
     d = df.copy()
     d["exg_time"] = pd.to_datetime(d["exg_time"], utc=True, errors="coerce")
 
-    # Stage: drop NA core columns
-    d = d.dropna(subset=["exg_time", "trade_price", "trade_qty"])
-    dropped_na = d0 - len(d)
+    d = d.dropna(subset=required)
+    dropped_na = raw_len - len(d)
 
-    # Stage: drop non-positive trades (hard cleaning)
-    d1 = len(d)
+    before_nonpos = len(d)
     d = d[(d["trade_price"] > 0) & (d["trade_qty"] > 0)]
-    dropped_nonpos = d1 - len(d)
+    dropped_nonpos = before_nonpos - len(d)
 
     d = d.sort_values("exg_time").reset_index(drop=True)
 
     diag = {
         "trade_level": {
-            "raw_len": int(d0),
-            "after_dropna_len": int(d0 - dropped_na),
+            "raw_len": int(raw_len),
+            "after_dropna_len": int(raw_len - dropped_na),
             "dropped_na": int(dropped_na),
             "after_nonpos_len": int(len(d)),
             "dropped_nonpos": int(dropped_nonpos),
-            "dropped_total": int(d0 - len(d)),
+            "dropped_total": int(raw_len - len(d)),
         }
     }
 
-    # keep your print if you want (optional)
-    print("Trade Level Dropped Length:", diag["trade_level"]["dropped_na"])
+    if verbose:
+        print("Trade-level rows dropped:", diag["trade_level"]["dropped_total"])
 
     return (d, diag) if return_diag else d
 
 
-
 def build_pair_series(df1_clean, df2_clean, x_minutes, cfg, name1="X1", name2="X2"):
-    """
-    
-    """
     freq = f"{x_minutes}min"
 
-    # resample -> Series
-    if cfg.resample_method == "vwap":
-        b1 = bars.make_vwap_bars(df1_clean, freq=freq)["vwap"].rename(name1)
-        b2 = bars.make_vwap_bars(df2_clean, freq=freq)["vwap"].rename(name2)
-    else:
-        b1 = bars.make_vol_bars(df1_clean, freq=freq)["price"].rename(name1)
-        b2 = bars.make_vol_bars(df2_clean, freq=freq)["price"].rename(name2)
+    if cfg.resample_method != "vwap":
+        raise ValueError(f"Unsupported resample_method: {cfg.resample_method}")
 
-    # after resample, before merge 
+    b1 = bars.make_vwap_bars(df1_clean, freq=freq)["vwap"].rename(name1)
+    b2 = bars.make_vwap_bars(df2_clean, freq=freq)["vwap"].rename(name2)
+
     b1 = bars._fill_series(b1, cfg.pre_merge_fill, cfg.pre_merge_limit)
     b2 = bars._fill_series(b2, cfg.pre_merge_fill, cfg.pre_merge_limit)
 
-    # merge (align)
     pair = pd.concat([b1, b2], axis=1)
-
-    # Stage 3: after merge (fill pair)
     pair = bars._fill_df(pair, cfg.post_merge_fill, cfg.post_merge_limit)
 
-    # dropna after merge 
     if cfg.dropna_after_merge:
         pair = pair.dropna(subset=[name1, name2])
 
     return pair[name1], pair[name2], pair
 
+
 def prepare_data(cfg):
-    A, B, C = get_data()
-    
-    # unpack configurations: 
+    A_clean = data_cleaning_single_asset(load_asset_data("A"), return_diag=False)
+    B_clean = data_cleaning_single_asset(load_asset_data("B"), return_diag=False)
+    C_clean = data_cleaning_single_asset(load_asset_data("C"), return_diag=False)
 
-
-    A_clean = data_cleaning_single_asset(A, cfg)
-    B_clean = data_cleaning_single_asset(B, cfg)
-    C_clean = data_cleaning_single_asset(C, cfg)
-
-    x_AB, diag_AB = res.choose_x(A_clean, B_clean)
-    x_AC, diag_AC = res.choose_x(A_clean, C_clean)
-    x_BC, diag_BC = res.choose_x(B_clean, C_clean)
+    x_AB, diag_AB = res.choose_x(A_clean, B_clean, bar_method=cfg.resample_method)
+    x_AC, diag_AC = res.choose_x(A_clean, C_clean, bar_method=cfg.resample_method)
+    x_BC, diag_BC = res.choose_x(B_clean, C_clean, bar_method=cfg.resample_method)
 
     xA_AB, yB_AB, AB = build_pair_series(A_clean, B_clean, x_AB, cfg, "A", "B")
     xA_AC, yC_AC, AC = build_pair_series(A_clean, C_clean, x_AC, cfg, "A", "C")
     xB_BC, yC_BC, BC = build_pair_series(B_clean, C_clean, x_BC, cfg, "B", "C")
 
     return {
-        "A_clean": A_clean, "B_clean": B_clean, "C_clean": C_clean,
-        "x_AB": x_AB, "x_AC": x_AC, "x_BC": x_BC,
-        "diag_AB": diag_AB, "diag_AC": diag_AC, "diag_BC": diag_BC,
-        "AB": AB, "AC": AC, "BC": BC
+        "A_clean": A_clean,
+        "B_clean": B_clean,
+        "C_clean": C_clean,
+        "x_AB": x_AB,
+        "x_AC": x_AC,
+        "x_BC": x_BC,
+        "diag_AB": diag_AB,
+        "diag_AC": diag_AC,
+        "diag_BC": diag_BC,
+        "AB": AB,
+        "AC": AC,
+        "BC": BC,
+        "xA_AB": xA_AB,
+        "yB_AB": yB_AB,
+        "xA_AC": xA_AC,
+        "yC_AC": yC_AC,
+        "xB_BC": xB_BC,
+        "yC_BC": yC_BC,
     }

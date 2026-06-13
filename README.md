@@ -17,10 +17,17 @@ The core workflow is:
 ## Repository Layout
 
 ```text
+125981811.pdf       # Retained reference/source document for the project context
+data.zip            # External raw data bundle containing A.csv, B.csv, and C.csv
+extension.ipynb     # Supplementary ETF-based extension experiment
+engine.py           # Backward-compatible wrapper for kalman.engine
+pyproject.toml      # Editable package configuration
+requirements.txt    # Python dependency pins
+
 data/
-  A.csv
-  B.csv
-  C.csv
+  A.csv             # Extracted tick data for asset A
+  B.csv             # Extracted tick data for asset B
+  C.csv             # Extracted tick data for asset C
 
 experiments/
   configs.py     # DataCleaningConfig variants for merge and fill policy
@@ -34,6 +41,7 @@ src/
   kalman/
     bars.py          # VWAP aggregation and fill helpers
     clean.py         # Tick cleaning and aligned pair construction
+    engine.py        # Minimal portfolio engine and analytics helpers
     features.py      # Initial beta and Q/R calibration helpers
     kalman_filter.py # Scalar Kalman filter for beta_t
     plots.py         # Plotting helpers
@@ -42,13 +50,18 @@ src/
     xmin.py          # Bar interval selection from overlap and coverage
 
 notebooks/
+  01_original_tick_kf_workflow.ipynb
+  02_random_walk_kf_experiment.ipynb
+  03_random_walk_kf_refined_experiment.ipynb
+  04_yfinance_random_walk_kf_variant.ipynb
+  05_ecm_guided_kf_extension.ipynb
   eda.ipynb          # Exploratory inspection of result artifacts
 
 results/
   *.pkl              # Saved experiment outputs
 ```
 
-Root-level notebooks contain the original random-walk Kalman filter exploration and the ECM-KF extension.
+The numbered notebooks preserve the development path from the original tick-data Kalman filter workflow through refined random-walk KF experiments and the ECM-guided KF extension. Ignored local notebook folders are not part of the public project.
 
 ## Data Expectations
 
@@ -60,6 +73,8 @@ data/B.csv
 data/C.csv
 ```
 
+The repository also includes `data.zip`, which contains the same three raw CSV files as an external data bundle. The code reads the extracted files in `data/`.
+
 Minimum expected columns:
 
 - `exg_time`: trade timestamp
@@ -68,9 +83,11 @@ Minimum expected columns:
 
 ## Running Experiments
 
-Install dependencies in your preferred Python environment, then run from the project root:
+Install the package in editable mode from your preferred Python environment, then run from the project root:
 
 ```bash
+pip install -r requirements.txt
+pip install -e .
 python -m scripts.run_all
 ```
 

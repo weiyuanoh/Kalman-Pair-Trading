@@ -1,13 +1,6 @@
-"""
-Library for all possible ways to resample trade level data -> bars
-After choosing x, resample by 
-1. Simple time bars (no Volume information incorporated) 
-2. VWAP Bars: suitable for intraday trading 
-3. Volatility Bars: suitable for longer horizons 
-"""
-import pandas as pd 
-import numpy as np 
-import kalman.xmin as res
+"""Resampling helpers for trade-level data."""
+
+import pandas as pd
 
 
 def _fill_series(s, method, limit):
@@ -19,6 +12,7 @@ def _fill_series(s, method, limit):
         return s
     raise ValueError(f"Unknown fill method: {method}")
 
+
 def _fill_df(df, method, limit):
     if method == "ffill":
         return df.ffill(limit=limit)
@@ -28,24 +22,33 @@ def _fill_df(df, method, limit):
         return df
     raise ValueError(f"Unknown fill method: {method}")
 
-def make_vol_bars():
-    pass
 
-def make_vwap_bars(df, freq="15min",
-                   time_col="exg_time",
-                   price_col="trade_price",
-                   qty_col="trade_qty"):
+def make_vol_bars(*args, **kwargs):
+    raise NotImplementedError("Volume bars are not implemented. Use resample_method='vwap'.")
+
+
+def make_vwap_bars(
+    df,
+    freq="15min",
+    time_col="exg_time",
+    price_col="trade_price",
+    qty_col="trade_qty",
+):
+    required = [time_col, price_col, qty_col]
+    missing = [col for col in required if col not in df.columns]
+    if missing:
+        raise ValueError(f"Missing required columns: {missing}")
+
     d = df.copy()
     d[time_col] = pd.to_datetime(d[time_col], utc=True, errors="coerce")
-    d = d.dropna(subset=[time_col]).sort_values(time_col)
+    d = d.dropna(subset=required).sort_values(time_col)
     d = d[(d[price_col] > 0) & (d[qty_col] > 0)]
 
     d["pxq"] = d[price_col] * d[qty_col]
-    g = d.set_index(time_col).groupby(pd.Grouper(freq=freq))
+    grouped = d.set_index(time_col).groupby(pd.Grouper(freq=freq))
 
-    vol = g[qty_col].sum()
-    vwap = g["pxq"].sum() / vol
+    vol = grouped[qty_col].sum()
+    vwap = grouped["pxq"].sum() / vol
 
     out = pd.DataFrame({"vwap": vwap, "vol": vol})
-    out = out[(out["vol"] > 0) & out["vwap"].notna()]
-    return out
+    return out[(out["vol"] > 0) & out["vwap"].notna()]
