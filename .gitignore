@@ -205,3 +205,6 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# Related coursework / exploratory notebooks not part of the public project
+notebooks/ADVRisk-CMU/

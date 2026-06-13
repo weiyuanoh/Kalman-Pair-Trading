@@ -1,188 +1,147 @@
-# Kalman Pair Trading — Dynamic Hedge Ratio 
+# Kalman Pair Trading
 
-This repository implements an end-to-end **pairs trading** pipeline using a **Kalman filter** to estimate a **time-varying hedge ratio** \(\beta_t\). The overall flow is:
+> **Data note:** The input data used in this project is treated as externally provided and unverified. The repository focuses on modelling, filtering, signal construction, and backtesting rather than validating the provenance or completeness of the raw data.
 
-1) clean tick-level trades  
-2) aggregate into bar series (VWAP)  
-3) align pair series under configurable merge/fill policies  
-4) estimate \(\beta_t\) via a scalar Kalman filter  
-5) compute a tradable series (posterior spread or innovation) and standardize into a z-score  
-6) backtest a threshold mean-reversion strategy across all pair permutations  
+This repository implements a pair-trading research pipeline built around a random-walk Kalman filter for a dynamic hedge ratio. It also includes an ECM-KF extension that connects the filtering framework to an error-correction, cointegration-motivated view of the spread.
 
-This codebase was refactored from a notebook-style submission into a small library + script entrypoints.
+The core workflow is:
 
----
+1. Clean tick-level trade data.
+2. Aggregate trades into VWAP bars.
+3. Align two assets under configurable merge and fill policies.
+4. Estimate a time-varying hedge ratio with a scalar Kalman filter.
+5. Build a tradable posterior spread or innovation series.
+6. Standardize the signal with past-only rolling z-scores.
+7. Backtest a threshold-based mean-reversion state machine across directed pairs.
 
-## Repository layout
+## Repository Layout
 
-```
+```text
 data/
   A.csv
   B.csv
   C.csv
 
 experiments/
-  configs.py     # CONFIGS: merge/fill policy variants (DataCleaningConfig)
-  params.py      # PARAMS: model + signal parameters (Params)
-  __init__.py
+  configs.py     # DataCleaningConfig variants for merge and fill policy
+  params.py      # Params variants for model, signal, and strategy settings
 
 scripts/
-  run.py         # run_one: run 1 pair under 1 cfg + 1 prm end-to-end
-  run_all.py     # run_all: run permutations (currently hardcoded to 1 cfg + 1 prm for testing)
+  run.py         # Run one directed pair under one config and parameter set
+  run_all.py     # Run all directed pair permutations and save result pickles
 
 src/
   kalman/
-    clean.py         # ingest/clean ticks; build aligned pair series (merge/fill/drop policies)
-    bars.py          # bar aggregation (VWAP) + fill helpers
-    xmin.py          # choose_x: bar frequency selection based on overlap/coverage
-    features.py      # build_features: beta0, Q, R estimation helpers
-    kalman_filter.py # scalar Kalman filter estimating beta_t
-    strategy.py      # signal selection, z-score, state-machine trading, backtest
-    plots.py         # plotting helpers
-    stat_tests.py    # ADF/Johansen/ACF diagnostics (if used)
-    __init__.py
+    bars.py          # VWAP aggregation and fill helpers
+    clean.py         # Tick cleaning and aligned pair construction
+    features.py      # Initial beta and Q/R calibration helpers
+    kalman_filter.py # Scalar Kalman filter for beta_t
+    plots.py         # Plotting helpers
+    stat_tests.py    # ADF, Johansen, and ACF diagnostics
+    strategy.py      # Signal construction, backtest, and portfolio analytics
+    xmin.py          # Bar interval selection from overlap and coverage
 
-results/ 
-  Different Pickle files for different configuration
-  use ./notebooks/eda.ipynb to load and read the pickle file for a single config and params
+notebooks/
+  eda.ipynb          # Exploratory inspection of result artifacts
+
+results/
+  *.pkl              # Saved experiment outputs
 ```
 
----
+Root-level notebooks contain the original random-walk Kalman filter exploration and the ECM-KF extension.
 
-## Data expectations
+## Data Expectations
 
-Place the provided tick files under:
+Place tick files under:
 
-```
+```text
 data/A.csv
 data/B.csv
 data/C.csv
 ```
 
 Minimum expected columns:
-- `exg_time` (timestamp)
-- `trade_price`
-- `trade_qty`
 
----
+- `exg_time`: trade timestamp
+- `trade_price`: executed price
+- `trade_qty`: executed quantity
 
-## Running
+## Running Experiments
 
-### Current behavior (testing mode)
-At the moment, `scripts/run_all.py` is used in **testing mode**: it is typically hardcoded to run **one** `cfg` and **one** `prm` (but loops across all pair permutations).
-
-Run from the project root:
+Install dependencies in your preferred Python environment, then run from the project root:
 
 ```bash
 python -m scripts.run_all
 ```
 
-This evaluates all 6 directed permutations:
-- B vs A, A vs B  
-- C vs A, A vs C  
-- C vs B, B vs C  
+By default, this runs config `S1_post_ffill_unlimited` with parameter set `P0_baseline` across the six directed pair permutations:
 
----
+- `B_vs_A`
+- `A_vs_B`
+- `C_vs_A`
+- `A_vs_C`
+- `C_vs_B`
+- `B_vs_C`
 
-## Configuration system
+You can choose a different config or parameter set:
 
-### Data cleaning / merge policy (`cfg`)
-Configs are defined in `experiments/configs.py` as `DataCleaningConfig` and stored in `CONFIGS`. :contentReference[oaicite:2]{index=2}
+```bash
+python -m scripts.run_all --cfg S0_strict_no_fill --prm P2_trade_innovation
+```
 
-Each config controls:
-- `resample_method`: currently `"vwap"`
-- `pre_merge_fill`: fill policy applied to each leg before merge (e.g. `none`, `ffill`)
-- `post_merge_fill`: fill policy applied after merge (e.g. `none`, `ffill`)
-- `dropna_after_merge`: whether to drop rows with missing values after merge/fill
-- optional fill limits: `pre_merge_limit`, `post_merge_limit`
+The run writes a timestamped pickle to `results/` containing equity curves, portfolio statistics, config metadata, parameter metadata, and diagnostics captured during cleaning and resampling.
 
-Available configs: :contentReference[oaicite:3]{index=3}  
-- `S0_strict_no_fill`  
-  Strict baseline: no fill; drop rows missing either leg.
-- `S1_post_ffill_unlimited`  
-  Common baseline: fill after merge (unlimited), drop remaining NaNs.
-- `S2_post_ffill_L1`  
-  Conservative: fill only 1-bar gaps after merge.
-- `S3_pre_ffill_unlimited_only`  
-  Fill each leg pre-merge (unlimited), no post-fill.
-- `S4_pre_ffill_L1_only`  
-  Fill each leg pre-merge (1-bar), no post-fill.
-- `S5_pre_and_post_ffill_unlimited`  
-  “Most filled”: pre-fill + post-fill (both unlimited).
+## Model
 
-### Model + strategy parameters (`prm`)
-Params are defined in `experiments/params.py` as `Params` and stored in `PARAMS`. :contentReference[oaicite:4]{index=4}
+The baseline model treats the hedge ratio as a random walk:
 
-Each parameter set controls:
-- Kalman/feature calibration:
-  - `window_pct_R` (rolling beta window fraction used to estimate \(R\))
-  - `P0` (initial beta variance)
-  - `n0_beta_0` (fraction of data used to initialize \(\beta_0\))
-- Signal definition:
-  - `trade_by`: `"posterior_spread"` or `"innovation"` (implemented)
-- Trading thresholds:
-  - `z_sco_win` (rolling window length for z-score)
-  - `entry_z`, `exit_z`
+```text
+y_t = beta_t x_t + epsilon_t
+beta_t = beta_{t-1} + eta_t
+```
 
-Available params: :contentReference[oaicite:5]{index=5}  
-- `P0_baseline`  
-  Default: trade by `posterior_spread`, `z_sco_win=60`, `entry_z=2.0`, `exit_z=0.5`.
-- `P1_tighter_exit`  
-  Same idea but tighter exits (`exit_z=0.2`). *(Note: `n0_beta_0=1.0` here uses 100% data for beta0 init.)*
+The filter estimates `beta_t` recursively and produces:
 
----
+- `beta_hat`: posterior hedge ratio estimate
+- `posterior_spread`: `y_t - beta_hat_t * x_t`
+- `innovation`: one-step prediction residual
 
-## Core pipeline (high level)
+The strategy can trade either the posterior spread or the innovation residual, depending on the selected parameter set.
 
-### 1) Tick cleaning
-Tick data is cleaned per asset (timestamp parsing, dropping invalid rows, etc.). During this stage the code prints “dropped counts” (WIP: export these diagnostics to structured logs).
+## Signal And Backtest
 
-### 2) Bar aggregation (VWAP)
-Ticks are converted into VWAP bars:
-\[
-\mathrm{VWAP}_t = \frac{\sum_i p_i q_i}{\sum_i q_i}.
-\]
+Signals are converted into z-scores using shifted rolling moments so each decision only uses information available before the current bar. The backtest then applies a simple state machine:
 
-### 3) Choosing bar interval \(x\)
-`choose_x` selects a bar size (minutes) from a candidate set based on overlap/coverage between the two legs.
+- Flat state: enter when `abs(z) >= entry_z`.
+- Long or short state: exit when `abs(z) <= exit_z`.
 
-### 4) Pair series construction
-Two legs are merged and filled according to the chosen `cfg` (pre-merge fill, post-merge fill, dropna policy).
+This keeps entry and exit behavior explicit and avoids same-bar lookahead in the z-score calculation.
 
-### 5) Kalman filter
-Model:
-- Measurement: \(y_t = \beta_t x_t + \varepsilon_t,\ \varepsilon_t \sim N(0,Q)\)
-- State: \(\beta_t = \beta_{t-1} + \eta_t,\ \eta_t \sim N(0,R)\)
+## Configuration
 
-Outputs include:
-- \(\hat\beta_{t|t}\) (posterior beta)
-- posterior spread: \(s_t = y_t - \hat\beta_{t|t}x_t\)
-- innovation: \(e_t = y_t - \hat\beta_{t|t-1}x_t\)
+Cleaning and merge policies live in `experiments/configs.py`.
 
-### 6) Signal and trading
-The traded series depends on `prm.trade_by`:
-- `"posterior_spread"`: trade z-score on posterior spread
-- `"innovation"`: trade z-score on innovation residual
+Available config families include:
 
-The z-score is computed with **past-only** rolling moments (shifted), and the strategy executes using a **state machine** (`current_state`):
-- `current_state == 0`: flat, can enter when \(|z| \ge entry_z\)
-- `current_state != 0`: in position, evaluate exit conditions when \(|z| \le exit_z\)
+- Strict no-fill alignment.
+- Post-merge forward fill, unlimited or one-bar limited.
+- Pre-merge forward fill, unlimited or one-bar limited.
+- Combined pre- and post-merge forward fill.
 
-This design avoids “same-bar” leakage.
+Model and strategy parameters live in `experiments/params.py`.
 
----
+Parameter variants cover:
 
-## Plans / WIP
+- Posterior spread versus innovation signal source.
+- Z-score window length.
+- Entry and exit thresholds.
+- Initial state uncertainty.
+- Burn-in fraction used to initialize beta and calibration inputs.
 
-### Multi Assset Hedge
-Instead of pairwise hedging, I plan to extend it to multi asset hedges, meaning that the cointegration equation will be extended. 
+## ECM-KF Extension
 
-### Per-trade logs (future)
-For each `(cfg, prm, pair)`:
-- export a `trades.csv` containing entry/exit timestamps, side, z-score at entry/exit, quantities/notional, and PnL per trade.
+The ECM-KF extension explores an error-correction interpretation of the pair relationship. The motivation is to connect the dynamic hedge ratio framework to cointegration-style mean reversion, where deviations from the long-run relation inform short-run adjustment. This extension is kept alongside the original random-walk Kalman filter work as a related modelling path.
 
-### Scaling beyond testing mode (future)
-Move from “hardcode 1 cfg + 1 prm” to looping across all `CONFIGS × PARAMS`, with comparable result artifacts per run.
+## Project Scope
 
-### Specific data quality monitoring 
-Monitor how much data is lost in resample, cleaning, and combining series. 
+This repository is focused on research code for filtering, signal construction, and backtest mechanics. It does not claim production execution readiness, transaction cost completeness, or independent validation of the raw market data.
